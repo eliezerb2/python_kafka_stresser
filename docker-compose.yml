@@ -1,0 +1,50 @@
+version: '3.8'
+
+# based on the documentation in https://hub.docker.com/r/bitnami/kafka
+
+services:
+  kafka:
+    container_name: ${KAFKA_CONTAINER_NAME}
+    image: bitnami/kafka:latest
+    environment:
+      - KAFKA_CFG_NODE_ID=${KAFKA_NODE_ID}
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:${KAFKA_BROKER_INTERNAL_PORT},CONTROLLER://:${KAFKA_CONTROLLER_INTERNAL_PORT}
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://${KAFKA_CONTAINER_NAME}:${KAFKA_BROKER_INTERNAL_PORT}
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=${KAFKA_NODE_ID}@${KAFKA_CONTAINER_NAME}:${KAFKA_CONTROLLER_INTERNAL_PORT}
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:${KAFKA_BROKER_INTERNAL_PORT}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  init:
+    env_file: .env
+    build:
+      context: ./init
+      dockerfile: ../Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  consumer:
+    env_file: .env
+    build:
+      context: ./consumer
+      dockerfile: ../Dockerfile
+    depends_on:
+      - init
+    deploy:
+      replicas: ${CONSUMER_INSTANCE_COUNT}
+
+  producer:
+    env_file: .env
+    build:
+      context: ./producer
+      dockerfile: ../Dockerfile
+    container_name: ${PRODUCER_CONTAINER_NAME}
+    depends_on:
+      consumer:
+        condition: service_started
